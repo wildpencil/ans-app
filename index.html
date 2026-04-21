@@ -65,7 +65,7 @@
     Need testnet funds? <a href="https://faucet.circle.com" target="_blank">faucet.circle.com</a>
   </p>
 <script>
-const REGISTRAR = "0xDf84F80fBA0523e9EEbB30EbC0673BC415FCe29E";
+const REGISTRAR = "0x6d8FcfAf1992E22E106B359293Ae75b1D61fA0b8";
 const ARC_CHAIN_ID = 5042002;
 const ABI = [
   "function rentPrice(string name, uint256 duration) view returns (uint256)",
@@ -189,8 +189,8 @@ async function connect() {
     showStatus('Wallet connected!', 'ok');
 
     eth.on('accountsChanged', (accounts) => {
-      if (accounts.length === 0) { disconnect(); } 
-      else { 
+      if (accounts.length === 0) { disconnect(); }
+      else {
         walletAddr.textContent = accounts[0].slice(0,6) + '...' + accounts[0].slice(-4);
       }
     });
