@@ -28,7 +28,7 @@
     main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
     h1 { font-size: 2.8rem; font-weight: 800; margin-bottom: 12px; text-align: center; background: linear-gradient(135deg, #a78bfa, #7c3aed, #c4b5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     p.sub { color: #6b7280; margin-bottom: 24px; font-size: 1.1rem; text-align: center; }
-    .stats { display: flex; gap: 24px; margin-bottom: 40px; }
+    .stats { display: flex; gap: 16px; margin-bottom: 40px; flex-wrap: wrap; justify-content: center; }
     .stat-box { background: #13103a; border: 1px solid #2d2060; border-radius: 12px; padding: 16px 28px; text-align: center; }
     .stat-number { font-size: 1.8rem; font-weight: 800; color: #a78bfa; }
     .stat-label { font-size: 0.8rem; color: #6b7280; margin-top: 4px; }
@@ -76,9 +76,16 @@
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
     .modal-overlay.show { display: flex; }
     .modal { background: #13103a; border: 1px solid #2d2060; border-radius: 16px; padding: 32px; width: 100%; max-width: 480px; max-height: 80vh; overflow-y: auto; position: relative; }
-    .modal h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 24px; color: #a78bfa; }
+    .modal h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 8px; color: #a78bfa; }
     .modal-close { position: absolute; top: 16px; right: 20px; background: none; border: none; color: #6b7280; font-size: 1.5rem; cursor: pointer; width: auto; padding: 0; }
     .modal-close:hover { color: #fff; transform: none; box-shadow: none; background: none; }
+    .reward-banner { background: #0d0b1a; border: 1px solid #2d2060; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
+    .reward-banner .epoch-info { font-size: 0.8rem; color: #6b7280; margin-bottom: 8px; }
+    .reward-banner .reward-amount { font-size: 1.2rem; font-weight: 700; color: #10b981; margin-bottom: 8px; }
+    .reward-banner .pool-info { font-size: 0.8rem; color: #6b7280; margin-bottom: 10px; }
+    .claim-btn { width: 100%; padding: 10px; background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 700; cursor: pointer; font-family: inherit; }
+    .claim-btn:hover { transform: none; box-shadow: none; background: linear-gradient(135deg, #059669, #047857); }
+    .claim-btn:disabled { background: #1e1a3a; color: #4b5563; cursor: not-allowed; }
     .name-item { padding: 14px 16px; background: #0d0b1a; border: 1px solid #2d2060; border-radius: 10px; margin-bottom: 10px; }
     .name-item .name { font-weight: 700; color: #fff; font-size: 1rem; margin-bottom: 4px; }
     .name-item .name span { color: #a78bfa; }
@@ -137,6 +144,10 @@
         <div class="stat-number" id="totalNames">...</div>
         <div class="stat-label">.arc names registered</div>
       </div>
+      <div class="stat-box">
+        <div class="stat-number" id="rewardPoolStat">...</div>
+        <div class="stat-label">USDC reward pool</div>
+      </div>
     </div>
     <div class="card">
       <div class="search-row">
@@ -190,6 +201,7 @@
     <div class="modal">
       <button class="modal-close" onclick="closeMyNames()">✕</button>
       <h2>My .arc Names</h2>
+      <div id="rewardBanner"></div>
       <div id="namesList"><div class="loading-names">Loading...</div></div>
     </div>
   </div>
@@ -207,7 +219,12 @@ const ABI = [
   "function renew(string name, uint256 duration) payable returns (uint256)",
   "function available(string name) view returns (bool)",
   "function expiry(string name) view returns (uint256)",
-  "event NameRegistered(string name, bytes32 indexed node, address indexed owner, uint256 expires)"
+  "function rewardPool() view returns (uint256)",
+  "function getPendingReward(address user) view returns (uint256)",
+  "function getEpochInfo() view returns (uint256 epochId, uint256 pool, uint256 totalNames, uint256 timeUntilNextEpoch)",
+  "function advanceEpoch() external",
+  "function claim() external",
+  "event NameRegistered(string name, bytes32 indexed node, address indexed registrant, uint256 expires)"
 ];
 const REGISTRY_ABI = [
   "function owner(bytes32 node) view returns (address)",
@@ -217,8 +234,7 @@ const REGISTRY_ABI = [
 let provider, signer, registrar, connected = false;
 let selectedYears = 1, selectedRenewYears = 1;
 let currentName = '', myAddress = '', currentOwner = '', currentNode = '';
-let cachedTotal = null;
-let cachedEvents = [];
+let cachedTotal = null, cachedEvents = [];
 
 const nameInput = document.getElementById('nameInput');
 const priceInfo = document.getElementById('priceInfo');
@@ -249,31 +265,42 @@ function timeLeft(expires) {
   return {text:days+' days',cls:days<30?'red':'green'};
 }
 
-async function queryAllEvents(filter, registrarContract, latest) {
+function formatSeconds(s) {
+  if (s <= 0) return 'now';
+  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
+  if (d > 0) return d+'d '+h+'h';
+  if (h > 0) return h+'h '+m+'m';
+  return m+'m';
+}
+
+async function queryAllEvents(filter, rc, latest) {
   const events = [];
   for (let from = DEPLOY_BLOCK; from <= latest; from += CHUNK) {
     const to = Math.min(from + CHUNK - 1, latest);
-    const chunk = await registrarContract.queryFilter(filter, from, to);
+    const chunk = await rc.queryFilter(filter, from, to);
     events.push(...chunk);
   }
   return events;
 }
 
 async function loadStats() {
-  if (cachedTotal !== null) {
-    document.getElementById('totalNames').textContent = cachedTotal;
-    return;
-  }
   try {
     const rp = new ethers.JsonRpcProvider(RPC);
     const rc = new ethers.Contract(REGISTRAR, ABI, rp);
     const latest = await rp.getBlockNumber();
-    const events = await queryAllEvents(rc.filters.NameRegistered(), rc, latest);
-    cachedTotal = events.length;
-    cachedEvents = events;
+
+    const [pool, events] = await Promise.all([
+      rc.rewardPool(),
+      cachedEvents.length > 0 ? Promise.resolve(cachedEvents) : queryAllEvents(rc.filters.NameRegistered(), rc, latest)
+    ]);
+
+    if (cachedEvents.length === 0) { cachedEvents = events; cachedTotal = events.length; }
+
     document.getElementById('totalNames').textContent = cachedTotal;
+    document.getElementById('rewardPoolStat').textContent = parseFloat(ethers.formatEther(pool)).toFixed(2);
   } catch(e) {
     document.getElementById('totalNames').textContent = '—';
+    document.getElementById('rewardPoolStat').textContent = '—';
   }
 }
 
@@ -389,7 +416,7 @@ async function register() {
     showStatus('Waiting for confirmation...','info');
     await tx.wait();
     showStatus('Registered! TX: '+tx.hash.slice(0,10)+'...','ok');
-    cachedTotal = null; cachedEvents = [];
+    cachedTotal=null; cachedEvents=[];
     loadStats(); checkName();
   } catch(e) { showStatus('Error: '+(e.reason||e.message),'err'); }
 }
@@ -433,31 +460,100 @@ async function sendName(name) {
   } catch(e) { ss.textContent='Error: '+(e.reason||e.message); ss.className='send-status err'; }
 }
 
+async function claimReward() {
+  if (!connected) { connect(); return; }
+  try {
+    const claimStatus = document.getElementById('claimStatus');
+    claimStatus.textContent='Claiming...'; claimStatus.className='send-status info';
+    const tx = await registrar.claim();
+    claimStatus.textContent='Waiting...';
+    await tx.wait();
+    claimStatus.textContent='Claimed! TX: '+tx.hash.slice(0,10)+'...';
+    claimStatus.className='send-status ok';
+    loadStats();
+    setTimeout(()=>openMyNames(), 2000);
+  } catch(e) {
+    const claimStatus = document.getElementById('claimStatus');
+    claimStatus.textContent='Error: '+(e.reason||e.message);
+    claimStatus.className='send-status err';
+  }
+}
+
+async function advanceEpochAndClaim() {
+  if (!connected) { connect(); return; }
+  try {
+    const claimStatus = document.getElementById('claimStatus');
+    claimStatus.textContent='Advancing epoch...'; claimStatus.className='send-status info';
+    const tx = await registrar.advanceEpoch();
+    await tx.wait();
+    claimStatus.textContent='Epoch advanced! Now claiming...'; 
+    const tx2 = await registrar.claim();
+    await tx2.wait();
+    claimStatus.textContent='Claimed! TX: '+tx2.hash.slice(0,10)+'...';
+    claimStatus.className='send-status ok';
+    loadStats();
+    setTimeout(()=>openMyNames(), 2000);
+  } catch(e) {
+    const claimStatus = document.getElementById('claimStatus');
+    claimStatus.textContent='Error: '+(e.reason||e.message);
+    claimStatus.className='send-status err';
+  }
+}
+
 async function openMyNames() {
   document.getElementById('modalOverlay').className='modal-overlay show';
   document.getElementById('namesList').innerHTML='<div class="loading-names">Loading your names...</div>';
+  document.getElementById('rewardBanner').innerHTML='';
+
   try {
     const rp = new ethers.JsonRpcProvider(RPC);
     const rc = new ethers.Contract(REGISTRAR, ABI, rp);
     const latest = await rp.getBlockNumber();
 
-    // Cache'deki eventleri kullan, yoksa yükle
-    let allEvents = cachedEvents;
-    if (allEvents.length === 0) {
-      allEvents = await queryAllEvents(rc.filters.NameRegistered(), rc, latest);
-      cachedEvents = allEvents;
-      cachedTotal = allEvents.length;
+    if (cachedEvents.length===0) {
+      cachedEvents = await queryAllEvents(rc.filters.NameRegistered(), rc, latest);
+      cachedTotal = cachedEvents.length;
       document.getElementById('totalNames').textContent = cachedTotal;
     }
 
-    const myEvents = allEvents.filter(e => e.args[2].toLowerCase() === myAddress.toLowerCase());
+    const myEvents = cachedEvents.filter(e => e.args[2].toLowerCase()===myAddress.toLowerCase());
+
+    // Reward bilgisi
+    try {
+      const [pendingReward, epochInfo] = await Promise.all([
+        rc.getPendingReward(myAddress),
+        rc.getEpochInfo()
+      ]);
+
+      const rewardUsdc = parseFloat(ethers.formatEther(pendingReward)).toFixed(4);
+      const poolUsdc = parseFloat(ethers.formatEther(epochInfo[1])).toFixed(2);
+      const timeLeft = formatSeconds(Number(epochInfo[3]));
+      const epochId = Number(epochInfo[0]);
+
+      let bannerHtml = '<div class="reward-banner">';
+      bannerHtml += '<div class="epoch-info">Epoch #'+epochId+' · Next epoch in: '+timeLeft+'</div>';
+      bannerHtml += '<div class="reward-amount">'+rewardUsdc+' USDC claimable</div>';
+      bannerHtml += '<div class="pool-info">Total pool: '+poolUsdc+' USDC</div>';
+
+      if (Number(epochInfo[3]) === 0) {
+        // Epoch bitti, önce advance et
+        bannerHtml += '<button class="claim-btn" onclick="advanceEpochAndClaim()">Advance Epoch & Claim</button>';
+      } else if (parseFloat(rewardUsdc) > 0) {
+        bannerHtml += '<button class="claim-btn" onclick="claimReward()">Claim Reward</button>';
+      } else {
+        bannerHtml += '<button class="claim-btn" disabled>No reward yet</button>';
+      }
+      bannerHtml += '<div class="send-status" id="claimStatus"></div>';
+      bannerHtml += '</div>';
+      document.getElementById('rewardBanner').innerHTML = bannerHtml;
+    } catch(e) {}
 
     if (myEvents.length===0) {
       document.getElementById('namesList').innerHTML='<div class="no-names">No .arc names found for this wallet.</div>';
       return;
     }
+
     let html='';
-    const now=Math.floor(Date.now()/1000);
     for (const e of myEvents) {
       const name=e.args[0], expires=Number(e.args[3]);
       const expiryDate=new Date(expires*1000).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});
