@@ -27,7 +27,11 @@
     .disconnect-btn-header:hover { background: #2a0a0a; transform: none; box-shadow: none; }
     main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
     h1 { font-size: 2.8rem; font-weight: 800; margin-bottom: 12px; text-align: center; background: linear-gradient(135deg, #a78bfa, #7c3aed, #c4b5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    p.sub { color: #6b7280; margin-bottom: 48px; font-size: 1.1rem; text-align: center; }
+    p.sub { color: #6b7280; margin-bottom: 24px; font-size: 1.1rem; text-align: center; }
+    .stats { display: flex; gap: 24px; margin-bottom: 40px; }
+    .stat-box { background: #13103a; border: 1px solid #2d2060; border-radius: 12px; padding: 16px 28px; text-align: center; }
+    .stat-number { font-size: 1.8rem; font-weight: 800; color: #a78bfa; }
+    .stat-label { font-size: 0.8rem; color: #6b7280; margin-top: 4px; }
     .card { background: #13103a; border: 1px solid #2d2060; border-radius: 16px; padding: 36px; width: 100%; max-width: 500px; box-shadow: 0 0 60px rgba(124, 58, 237, 0.15); }
     .search-row { display: flex; gap: 8px; margin-bottom: 16px; }
     .search-row input { margin-bottom: 0; flex: 1; }
@@ -128,6 +132,12 @@
   <main>
     <h1>Your .arc Identity</h1>
     <p class="sub">Register your name on the Arc Network</p>
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-number" id="totalNames">—</div>
+        <div class="stat-label">.arc names registered</div>
+      </div>
+    </div>
     <div class="card">
       <div class="search-row">
         <input id="nameInput" type="text" placeholder="search your name..." />
@@ -226,6 +236,40 @@ const walletAddrHeader = document.getElementById('walletAddrHeader');
 
 function showStatus(msg, type) { status.textContent = msg; status.className = 'status ' + type; }
 
+function getNode(name) {
+  const arcNode = ethers.keccak256(ethers.solidityPacked(['bytes32', 'bytes32'], [ethers.ZeroHash, ethers.keccak256(ethers.toUtf8Bytes('arc'))]));
+  return ethers.keccak256(ethers.solidityPacked(['bytes32', 'bytes32'], [arcNode, ethers.keccak256(ethers.toUtf8Bytes(name))]));
+}
+
+function timeLeft(expires) {
+  const now = Math.floor(Date.now() / 1000);
+  const diff = expires - now;
+  if (diff <= 0) return { text: 'Expired', cls: 'red' };
+  const days = Math.floor(diff / 86400);
+  if (days > 365) return { text: Math.floor(days/365) + ' years', cls: 'green' };
+  if (days > 30) return { text: Math.floor(days/30) + ' months', cls: 'green' };
+  return { text: days + ' days', cls: days < 30 ? 'red' : 'green' };
+}
+
+async function loadStats() {
+  try {
+    const readProvider = new ethers.JsonRpcProvider(RPC);
+    const readRegistrar = new ethers.Contract(REGISTRAR, ABI, readProvider);
+    const latest = await readProvider.getBlockNumber();
+    let total = 0;
+    const chunkSize = 9000;
+    for (let from = DEPLOY_BLOCK; from <= latest; from += chunkSize) {
+      const to = Math.min(from + chunkSize - 1, latest);
+      const filter = readRegistrar.filters.NameRegistered();
+      const chunk = await readRegistrar.queryFilter(filter, from, to);
+      total += chunk.length;
+    }
+    document.getElementById('totalNames').textContent = total;
+  } catch(e) {
+    document.getElementById('totalNames').textContent = '—';
+  }
+}
+
 function updateRegisterBtn() {
   if (!badge.textContent.includes('Available')) return;
   if (!connected) {
@@ -270,21 +314,6 @@ function selectRenew(years) {
   document.getElementById('renewBtn5').className = years === 5 ? 'renew-btn active' : 'renew-btn';
 }
 
-function timeLeft(expires) {
-  const now = Math.floor(Date.now() / 1000);
-  const diff = expires - now;
-  if (diff <= 0) return { text: 'Expired', cls: 'red' };
-  const days = Math.floor(diff / 86400);
-  if (days > 365) return { text: Math.floor(days/365) + ' years', cls: 'green' };
-  if (days > 30) return { text: Math.floor(days/30) + ' months', cls: 'green' };
-  return { text: days + ' days', cls: days < 30 ? 'red' : 'green' };
-}
-
-function getNode(name) {
-  const arcNode = ethers.keccak256(ethers.solidityPacked(['bytes32', 'bytes32'], [ethers.ZeroHash, ethers.keccak256(ethers.toUtf8Bytes('arc'))]));
-  return ethers.keccak256(ethers.solidityPacked(['bytes32', 'bytes32'], [arcNode, ethers.keccak256(ethers.toUtf8Bytes(name))]));
-}
-
 async function checkName() {
   const name = nameInput.value.trim().toLowerCase();
   if (!name || name.length < 3) {
@@ -307,7 +336,6 @@ async function checkName() {
     const readProvider = new ethers.JsonRpcProvider(RPC);
     const readRegistrar = new ethers.Contract(REGISTRAR, ABI, readProvider);
     const isAvailable = await readRegistrar.available(name);
-
     if (isAvailable) {
       badge.className = 'badge available';
       badge.textContent = name + '.arc — Available';
@@ -389,6 +417,7 @@ async function register() {
     showStatus('Waiting for confirmation...', 'info');
     await tx.wait();
     showStatus('Registered! TX: ' + tx.hash.slice(0,10) + '...', 'ok');
+    loadStats();
     checkName();
   } catch(e) { showStatus('Error: ' + (e.reason || e.message), 'err'); }
 }
@@ -417,7 +446,6 @@ async function sendName(name) {
   const node = getNode(name);
   const toAddr = document.getElementById('sendInput_' + name).value.trim();
   const sendStatus = document.getElementById('sendStatus_' + name);
-
   if (!toAddr || !ethers.isAddress(toAddr)) {
     sendStatus.textContent = 'Invalid address';
     sendStatus.className = 'send-status err'; return;
@@ -469,14 +497,13 @@ async function openMyNames() {
       const expires = Number(e.args[3]);
       const expiryDate = new Date(expires * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
       const tl = timeLeft(expires);
-      const safeId = name.replace(/[^a-z0-9]/g, '');
       html += '<div class="name-item">';
       html += '<div class="name">' + name + '<span>.arc</span></div>';
       html += '<div class="expiry">Expires: ' + expiryDate + ' · <span style="color:' + (tl.cls === 'green' ? '#10b981' : '#ef4444') + '">' + tl.text + '</span></div>';
       html += '<div class="name-item-actions">';
-      html += '<button class="send-btn" onclick="toggleSendForm(\'' + safeId + '\')">Send →</button>';
+      html += '<button class="send-btn" onclick="toggleSendForm(\'' + name + '\')">Send →</button>';
       html += '</div>';
-      html += '<div class="send-form" id="sendForm_' + safeId + '">';
+      html += '<div class="send-form" id="sendForm_' + name + '">';
       html += '<input class="send-input" id="sendInput_' + name + '" placeholder="0x... recipient address" />';
       html += '<button class="send-confirm" onclick="sendName(\'' + name + '\')">Confirm Send</button>';
       html += '<div class="send-status" id="sendStatus_' + name + '"></div>';
@@ -494,6 +521,9 @@ function closeMyNames(event) {
     document.getElementById('modalOverlay').className = 'modal-overlay';
   }
 }
+
+// Sayfa yüklenince stats yükle
+loadStats();
 </script>
 </body>
 </html>
