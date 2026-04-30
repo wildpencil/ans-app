@@ -50,6 +50,19 @@
     .status.ok { background: #0a2a1a; border: 1px solid #10b981; color: #10b981; display: block; }
     .status.err { background: #2a0a0a; border: 1px solid #ef4444; color: #ef4444; display: block; }
     .status.info { background: #1e1a3a; border: 1px solid #7c3aed; color: #a78bfa; display: block; }
+
+    /* NAME DETAIL */
+    .name-detail { margin-top: 16px; padding: 16px; background: #0d0b1a; border: 1px solid #2d2060; border-radius: 10px; display: none; }
+    .name-detail.show { display: block; }
+    .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #1e1a3a; font-size: 0.9rem; }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label { color: #6b7280; }
+    .detail-value { color: #fff; font-weight: 600; word-break: break-all; text-align: right; max-width: 60%; }
+    .detail-value.purple { color: #a78bfa; }
+    .detail-value.green { color: #10b981; }
+    .detail-value.red { color: #ef4444; }
+
+    /* MODAL */
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
     .modal-overlay.show { display: flex; }
     .modal { background: #13103a; border: 1px solid #2d2060; border-radius: 16px; padding: 32px; width: 100%; max-width: 480px; max-height: 80vh; overflow-y: auto; position: relative; }
@@ -62,6 +75,7 @@
     .name-item .expiry { font-size: 0.78rem; color: #6b7280; margin-top: 4px; }
     .loading-names { text-align: center; color: #6b7280; padding: 24px; }
     .no-names { text-align: center; color: #6b7280; padding: 24px; }
+
     footer { text-align: center; padding: 24px; color: #4b5563; font-size: 0.85rem; border-top: 1px solid #1e1a3a; }
     footer a { color: #7c3aed; text-decoration: none; }
     footer a:hover { color: #a78bfa; }
@@ -101,7 +115,21 @@
         <button onclick="checkName()" style="width:auto;padding:14px 20px;">Check</button>
       </div>
       <div id="badge" style="display:none"></div>
-      <div id="durationRow" style="display:none; margin-top:4px;">
+      <div class="name-detail" id="nameDetail">
+        <div class="detail-row">
+          <span class="detail-label">Owner</span>
+          <span class="detail-value purple" id="detailOwner">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Expires</span>
+          <span class="detail-value" id="detailExpiry">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Time Left</span>
+          <span class="detail-value" id="detailTimeLeft">—</span>
+        </div>
+      </div>
+      <div id="durationRow" style="display:none; margin-top:16px;">
         <div class="duration-row">
           <button class="duration-btn active" id="btn1" onclick="selectDuration(1)">1 Year — 3 USDC</button>
           <button class="duration-btn" id="btn5" onclick="selectDuration(5)">5 Years — 15 USDC</button>
@@ -131,6 +159,7 @@
 
 <script>
 const REGISTRAR = "0x326AEb1ce28552c27DC1046B98bB067aD6c2A327";
+const REGISTRY = "0x8216cAde5A6196b2E4257945CEd53dd9D991400b";
 const DEPLOY_BLOCK = 38256893;
 const ARC_CHAIN_ID = 5042002;
 const RPC = "https://rpc.testnet.arc.network";
@@ -138,7 +167,11 @@ const ABI = [
   "function rentPrice(string name, uint256 duration) view returns (uint256)",
   "function register(string name, address owner, uint256 duration) payable returns (bytes32)",
   "function available(string name) view returns (bool)",
+  "function expiry(string name) view returns (uint256)",
   "event NameRegistered(string name, bytes32 indexed node, address indexed owner, uint256 expires)"
+];
+const REGISTRY_ABI = [
+  "function owner(bytes32 node) view returns (address)"
 ];
 
 let provider, signer, registrar, connected = false;
@@ -152,6 +185,7 @@ const registerBtn = document.getElementById('registerBtn');
 const status = document.getElementById('status');
 const badge = document.getElementById('badge');
 const durationRow = document.getElementById('durationRow');
+const nameDetail = document.getElementById('nameDetail');
 const myNamesBtn = document.getElementById('myNamesBtn');
 const headerConnectBtn = document.getElementById('headerConnectBtn');
 const walletInfo = document.getElementById('walletInfo');
@@ -189,11 +223,22 @@ function selectDuration(years) {
   updateRegisterBtn();
 }
 
+function timeLeft(expires) {
+  const now = Math.floor(Date.now() / 1000);
+  const diff = expires - now;
+  if (diff <= 0) return { text: 'Expired', cls: 'red' };
+  const days = Math.floor(diff / 86400);
+  if (days > 365) return { text: Math.floor(days/365) + ' years', cls: 'green' };
+  if (days > 30) return { text: Math.floor(days/30) + ' months', cls: 'green' };
+  return { text: days + ' days', cls: days < 30 ? 'red' : 'green' };
+}
+
 async function checkName() {
   const name = nameInput.value.trim().toLowerCase();
   if (!name || name.length < 3) {
     badge.style.display = 'none'; priceInfo.textContent = '';
     durationRow.style.display = 'none'; registerBtn.style.display = 'none';
+    nameDetail.className = 'name-detail';
     showStatus('Min 3 characters', 'err'); return;
   }
   if (!/^[a-z0-9-]+$/.test(name)) { showStatus('Only lowercase letters, numbers, hyphens', 'err'); return; }
@@ -203,10 +248,13 @@ async function checkName() {
   badge.textContent = 'Checking ' + name + '.arc ...';
   priceInfo.textContent = ''; durationRow.style.display = 'none';
   registerBtn.style.display = 'none'; status.className = 'status';
+  nameDetail.className = 'name-detail';
+
   try {
     const readProvider = new ethers.JsonRpcProvider(RPC);
     const readRegistrar = new ethers.Contract(REGISTRAR, ABI, readProvider);
     const isAvailable = await readRegistrar.available(name);
+
     if (isAvailable) {
       badge.className = 'badge available';
       badge.textContent = name + '.arc — Available';
@@ -216,8 +264,34 @@ async function checkName() {
       updateRegisterBtn();
     } else {
       badge.className = 'badge taken';
-      badge.textContent = name + '.arc — Already Registered';
+      badge.textContent = name + '.arc — Registered';
       priceInfo.textContent = ''; durationRow.style.display = 'none'; registerBtn.style.display = 'none';
+
+      // Detay bilgileri çek
+      try {
+        const expires = Number(await readRegistrar.expiry(name));
+        const expiryDate = new Date(expires * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const tl = timeLeft(expires);
+
+        // Registry'den owner çek
+        const node = ethers.keccak256(ethers.solidityPacked(
+          ['bytes32', 'bytes32'],
+          [ethers.keccak256(ethers.solidityPacked(['bytes32', 'bytes32'], [ethers.ZeroHash, ethers.keccak256(ethers.toUtf8Bytes('arc'))])),
+           ethers.keccak256(ethers.toUtf8Bytes(name))]
+        ));
+        const registry = new ethers.Contract(REGISTRY, REGISTRY_ABI, readProvider);
+        const ownerAddr = await registry.owner(node);
+        const ownerShort = ownerAddr.slice(0,6) + '...' + ownerAddr.slice(-4);
+
+        document.getElementById('detailOwner').textContent = ownerShort;
+        document.getElementById('detailExpiry').textContent = expiryDate;
+        const tlEl = document.getElementById('detailTimeLeft');
+        tlEl.textContent = tl.text;
+        tlEl.className = 'detail-value ' + tl.cls;
+        nameDetail.className = 'name-detail show';
+      } catch(e) {
+        nameDetail.className = 'name-detail';
+      }
     }
   } catch(e) {
     badge.className = 'badge checking';
@@ -274,10 +348,11 @@ async function register() {
     showStatus('Waiting for confirmation...', 'info');
     await tx.wait();
     showStatus('Registered! TX: ' + tx.hash.slice(0,10) + '...', 'ok');
-    badge.className = 'badge available';
+    badge.className = 'badge taken';
     badge.textContent = name + '.arc — Registered!';
     durationRow.style.display = 'none';
     registerBtn.style.display = 'none';
+    checkName();
   } catch(e) { showStatus('Error: ' + (e.reason || e.message), 'err'); }
 }
 
@@ -307,9 +382,10 @@ async function openMyNames() {
       const expires = Number(e.args[3]);
       const expiryDate = new Date(expires * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
       const expired = expires < now;
+      const tl = timeLeft(expires);
       html += '<div class="name-item"><div>';
       html += '<div class="name">' + name + '<span>.arc</span></div>';
-      html += '<div class="expiry">' + (expired ? 'Expired: ' : 'Expires: ') + expiryDate + '</div>';
+      html += '<div class="expiry">' + (expired ? 'Expired: ' : 'Expires: ') + expiryDate + ' · <span style="color:' + (tl.cls === 'green' ? '#10b981' : '#ef4444') + '">' + tl.text + '</span></div>';
       html += '</div></div>';
     }
     document.getElementById('namesList').innerHTML = html;
