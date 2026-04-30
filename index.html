@@ -69,21 +69,30 @@
     .action-btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 700; cursor: pointer; font-family: inherit; margin-bottom: 8px; }
     .action-btn.purple { background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #fff; }
     .action-btn.purple:hover { background: linear-gradient(135deg, #6d28d9, #5b21b6); transform: none; box-shadow: none; }
-    .action-btn.outline { background: none; border: 1px solid #2d2060; color: #a78bfa; }
-    .action-btn.outline:hover { background: #1e1a3a; transform: none; box-shadow: none; }
-    .transfer-input { width: 100%; padding: 10px 14px; background: #0d0b1a; border: 1px solid #2d2060; border-radius: 8px; color: #fff; font-size: 0.85rem; font-family: inherit; margin-bottom: 8px; outline: none; }
-    .transfer-input:focus { border-color: #7c3aed; }
-    .transfer-input::placeholder { color: #4b5563; }
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
     .modal-overlay.show { display: flex; }
     .modal { background: #13103a; border: 1px solid #2d2060; border-radius: 16px; padding: 32px; width: 100%; max-width: 480px; max-height: 80vh; overflow-y: auto; position: relative; }
     .modal h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 24px; color: #a78bfa; }
     .modal-close { position: absolute; top: 16px; right: 20px; background: none; border: none; color: #6b7280; font-size: 1.5rem; cursor: pointer; width: auto; padding: 0; }
     .modal-close:hover { color: #fff; transform: none; box-shadow: none; background: none; }
-    .name-item { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: #0d0b1a; border: 1px solid #2d2060; border-radius: 10px; margin-bottom: 10px; }
-    .name-item .name { font-weight: 700; color: #fff; font-size: 1rem; }
+    .name-item { padding: 14px 16px; background: #0d0b1a; border: 1px solid #2d2060; border-radius: 10px; margin-bottom: 10px; }
+    .name-item .name { font-weight: 700; color: #fff; font-size: 1rem; margin-bottom: 4px; }
     .name-item .name span { color: #a78bfa; }
-    .name-item .expiry { font-size: 0.78rem; color: #6b7280; margin-top: 4px; }
+    .name-item .expiry { font-size: 0.78rem; color: #6b7280; margin-bottom: 10px; }
+    .name-item-actions { display: flex; gap: 8px; }
+    .send-btn { flex: 1; padding: 8px; background: none; border: 1px solid #2d2060; color: #a78bfa; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; font-family: inherit; }
+    .send-btn:hover { background: #1e1a3a; transform: none; box-shadow: none; }
+    .send-form { margin-top: 10px; display: none; }
+    .send-form.show { display: block; }
+    .send-input { width: 100%; padding: 8px 12px; background: #13103a; border: 1px solid #2d2060; border-radius: 6px; color: #fff; font-size: 0.85rem; font-family: inherit; margin-bottom: 6px; outline: none; }
+    .send-input:focus { border-color: #7c3aed; }
+    .send-input::placeholder { color: #4b5563; }
+    .send-confirm { width: 100%; padding: 8px; background: linear-gradient(135deg, #7c3aed, #6d28d9); color: #fff; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 700; cursor: pointer; font-family: inherit; }
+    .send-confirm:hover { transform: none; box-shadow: none; background: linear-gradient(135deg, #6d28d9, #5b21b6); }
+    .send-status { font-size: 0.8rem; margin-top: 6px; padding: 6px 10px; border-radius: 6px; display: none; }
+    .send-status.ok { background: #0a2a1a; border: 1px solid #10b981; color: #10b981; display: block; }
+    .send-status.err { background: #2a0a0a; border: 1px solid #ef4444; color: #ef4444; display: block; }
+    .send-status.info { background: #1e1a3a; border: 1px solid #7c3aed; color: #a78bfa; display: block; }
     .loading-names { text-align: center; color: #6b7280; padding: 24px; }
     .no-names { text-align: center; color: #6b7280; padding: 24px; }
     footer { text-align: center; padding: 24px; color: #4b5563; font-size: 0.85rem; border-top: 1px solid #1e1a3a; }
@@ -138,8 +147,6 @@
           <span class="detail-label">Time Left</span>
           <span class="detail-value" id="detailTimeLeft">—</span>
         </div>
-
-        <!-- RENEW -->
         <div class="owner-section" id="renewSection">
           <div class="section-title">Renew</div>
           <div class="renew-row">
@@ -148,15 +155,7 @@
           </div>
           <button class="action-btn purple" onclick="renew()">Renew Name</button>
         </div>
-
-        <!-- TRANSFER -->
-        <div class="owner-section" id="transferSection">
-          <div class="section-title">Transfer to another wallet</div>
-          <input class="transfer-input" id="transferAddr" placeholder="0x... recipient address" />
-          <button class="action-btn outline" onclick="transfer()">Transfer Name</button>
-        </div>
       </div>
-
       <div id="durationRow" style="display:none; margin-top:16px;">
         <div class="duration-row">
           <button class="duration-btn active" id="btn1" onclick="selectDuration(1)">1 Year — 3 USDC</button>
@@ -220,7 +219,6 @@ const badge = document.getElementById('badge');
 const durationRow = document.getElementById('durationRow');
 const nameDetail = document.getElementById('nameDetail');
 const renewSection = document.getElementById('renewSection');
-const transferSection = document.getElementById('transferSection');
 const myNamesBtn = document.getElementById('myNamesBtn');
 const headerConnectBtn = document.getElementById('headerConnectBtn');
 const walletInfo = document.getElementById('walletInfo');
@@ -243,10 +241,8 @@ function updateRegisterBtn() {
 function showOwnerSections() {
   if (connected && currentOwner && myAddress.toLowerCase() === currentOwner.toLowerCase()) {
     renewSection.className = 'owner-section show';
-    transferSection.className = 'owner-section show';
   } else {
     renewSection.className = 'owner-section';
-    transferSection.className = 'owner-section';
   }
 }
 
@@ -256,7 +252,6 @@ function disconnect() {
   walletInfo.className = 'wallet-info hidden';
   myNamesBtn.className = 'my-names-btn hidden';
   renewSection.className = 'owner-section';
-  transferSection.className = 'owner-section';
   updateRegisterBtn();
   showStatus('Disconnected', 'info');
 }
@@ -285,6 +280,11 @@ function timeLeft(expires) {
   return { text: days + ' days', cls: days < 30 ? 'red' : 'green' };
 }
 
+function getNode(name) {
+  const arcNode = ethers.keccak256(ethers.solidityPacked(['bytes32', 'bytes32'], [ethers.ZeroHash, ethers.keccak256(ethers.toUtf8Bytes('arc'))]));
+  return ethers.keccak256(ethers.solidityPacked(['bytes32', 'bytes32'], [arcNode, ethers.keccak256(ethers.toUtf8Bytes(name))]));
+}
+
 async function checkName() {
   const name = nameInput.value.trim().toLowerCase();
   if (!name || name.length < 3) {
@@ -302,7 +302,6 @@ async function checkName() {
   registerBtn.style.display = 'none'; status.className = 'status';
   nameDetail.className = 'name-detail';
   renewSection.className = 'owner-section';
-  transferSection.className = 'owner-section';
 
   try {
     const readProvider = new ethers.JsonRpcProvider(RPC);
@@ -323,21 +322,17 @@ async function checkName() {
         const expires = Number(await readRegistrar.expiry(name));
         const expiryDate = new Date(expires * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         const tl = timeLeft(expires);
-        const arcNode = ethers.keccak256(ethers.solidityPacked(['bytes32', 'bytes32'], [ethers.ZeroHash, ethers.keccak256(ethers.toUtf8Bytes('arc'))]));
-        currentNode = ethers.keccak256(ethers.solidityPacked(['bytes32', 'bytes32'], [arcNode, ethers.keccak256(ethers.toUtf8Bytes(name))]));
+        currentNode = getNode(name);
         const registry = new ethers.Contract(REGISTRY, REGISTRY_ABI, readProvider);
         currentOwner = await registry.owner(currentNode);
-        const ownerShort = currentOwner.slice(0,6) + '...' + currentOwner.slice(-4);
-        document.getElementById('detailOwner').textContent = ownerShort;
+        document.getElementById('detailOwner').textContent = currentOwner.slice(0,6) + '...' + currentOwner.slice(-4);
         document.getElementById('detailExpiry').textContent = expiryDate;
         const tlEl = document.getElementById('detailTimeLeft');
         tlEl.textContent = tl.text;
         tlEl.className = 'detail-value ' + tl.cls;
         nameDetail.className = 'name-detail show';
         showOwnerSections();
-      } catch(e) {
-        nameDetail.className = 'name-detail';
-      }
+      } catch(e) { nameDetail.className = 'name-detail'; }
     }
   } catch(e) {
     badge.className = 'badge checking';
@@ -413,21 +408,39 @@ async function renew() {
   } catch(e) { showStatus('Error: ' + (e.reason || e.message), 'err'); }
 }
 
-async function transfer() {
-  if (!connected) { connect(); return; }
-  const toAddr = document.getElementById('transferAddr').value.trim();
-  if (!toAddr || !ethers.isAddress(toAddr)) { showStatus('Invalid address', 'err'); return; }
-  if (toAddr.toLowerCase() === myAddress.toLowerCase()) { showStatus('Cannot transfer to yourself', 'err'); return; }
+function toggleSendForm(id) {
+  const form = document.getElementById('sendForm_' + id);
+  form.className = form.className.includes('show') ? 'send-form' : 'send-form show';
+}
+
+async function sendName(name) {
+  const node = getNode(name);
+  const toAddr = document.getElementById('sendInput_' + name).value.trim();
+  const sendStatus = document.getElementById('sendStatus_' + name);
+
+  if (!toAddr || !ethers.isAddress(toAddr)) {
+    sendStatus.textContent = 'Invalid address';
+    sendStatus.className = 'send-status err'; return;
+  }
+  if (toAddr.toLowerCase() === myAddress.toLowerCase()) {
+    sendStatus.textContent = 'Cannot send to yourself';
+    sendStatus.className = 'send-status err'; return;
+  }
   try {
-    showStatus('Sending transfer...', 'info');
+    sendStatus.textContent = 'Sending...';
+    sendStatus.className = 'send-status info';
     const registry = new ethers.Contract(REGISTRY, REGISTRY_ABI, signer);
-    const tx = await registry.setOwner(currentNode, toAddr);
-    showStatus('Waiting for confirmation...', 'info');
+    const tx = await registry.setOwner(node, toAddr);
+    sendStatus.textContent = 'Waiting...';
     await tx.wait();
-    showStatus('Transferred! TX: ' + tx.hash.slice(0,10) + '...', 'ok');
-    document.getElementById('transferAddr').value = '';
-    checkName();
-  } catch(e) { showStatus('Error: ' + (e.reason || e.message), 'err'); }
+    sendStatus.textContent = 'Sent! TX: ' + tx.hash.slice(0,10) + '...';
+    sendStatus.className = 'send-status ok';
+    document.getElementById('sendInput_' + name).value = '';
+    setTimeout(() => openMyNames(), 2000);
+  } catch(e) {
+    sendStatus.textContent = 'Error: ' + (e.reason || e.message);
+    sendStatus.className = 'send-status err';
+  }
 }
 
 async function openMyNames() {
@@ -456,10 +469,19 @@ async function openMyNames() {
       const expires = Number(e.args[3]);
       const expiryDate = new Date(expires * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
       const tl = timeLeft(expires);
-      html += '<div class="name-item"><div>';
+      const safeId = name.replace(/[^a-z0-9]/g, '');
+      html += '<div class="name-item">';
       html += '<div class="name">' + name + '<span>.arc</span></div>';
       html += '<div class="expiry">Expires: ' + expiryDate + ' · <span style="color:' + (tl.cls === 'green' ? '#10b981' : '#ef4444') + '">' + tl.text + '</span></div>';
-      html += '</div></div>';
+      html += '<div class="name-item-actions">';
+      html += '<button class="send-btn" onclick="toggleSendForm(\'' + safeId + '\')">Send →</button>';
+      html += '</div>';
+      html += '<div class="send-form" id="sendForm_' + safeId + '">';
+      html += '<input class="send-input" id="sendInput_' + name + '" placeholder="0x... recipient address" />';
+      html += '<button class="send-confirm" onclick="sendName(\'' + name + '\')">Confirm Send</button>';
+      html += '<div class="send-status" id="sendStatus_' + name + '"></div>';
+      html += '</div>';
+      html += '</div>';
     }
     document.getElementById('namesList').innerHTML = html;
   } catch(e) {
